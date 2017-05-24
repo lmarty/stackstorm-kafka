@@ -11,6 +11,9 @@ trigger_types:
         topic:
           description: "Category from which message was retrieved"
           type: string
+        b64topic:
+          description: "base64 encrypted category from which message was retrieved"
+          type: string
         message:
           description: "Captured message. JSON-serialized messages are automatically parsed"
           type: object

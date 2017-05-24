@@ -10,3 +10,5 @@ message_sensor:
   topics:
   - digital_logging_os
   - test
+  b64topics:
+  - stackdriver_encrypted_topic

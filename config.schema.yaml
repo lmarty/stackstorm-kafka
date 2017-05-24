@@ -28,6 +28,12 @@
           type: "string"
           default: "test"
           required: true
+      b64topics:
+        description: "List of topics with base64 encoded bodies eg: GCP Stackdriver"
+        type: "array"
+        items:
+          type: "string"
+          required: false
       group_id:
         description: "The sensors group ID"
         type: "string"

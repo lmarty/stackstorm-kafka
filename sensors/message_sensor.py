@@ -28,15 +28,19 @@ class KafkaMessageSensor(Sensor):
             raise ValueError(
                 '[KafkaMessageSensor]: "message_sensor.hosts" config value is required!')
 
+        self._b64topics = set(message_sensor.get('b64topics', []))
+
         self._topics = set(message_sensor.get('topics', []))
-        if not self._topics:
+        if not self._topics or self._b64topics :
             raise ValueError(
-                '[KafkaMessageSensor]: "message_sensor.topics" should list at least one topic!')
+                '[KafkaMessageSensor]: "message_sensor.topics" or "message_sensor.b64topics" must contain at least one topic!')
+
 
         # set defaults for empty values
         self._group_id = message_sensor.get('group_id') or self.DEFAULT_GROUP_ID
         self._client_id = message_sensor.get('client_id') or self.DEFAULT_CLIENT_ID
         self._consumer = None
+        self._b64consumer = None
 
     def setup(self):
         """
@@ -44,6 +48,12 @@ class KafkaMessageSensor(Sensor):
         """
         self._logger.debug('[KafkaMessageSensor]: Initializing consumer ...')
         self._consumer = KafkaConsumer(*self._topics,
+                                       client_id=self._client_id,
+                                       group_id=self._group_id,
+                                       bootstrap_servers=self._hosts,
+                                       deserializer_class=self._try_deserialize)
+
+        self._b64consumer = KafkaConsumer(*self._b64topics,
                                        client_id=self._client_id,
                                        group_id=self._group_id,
                                        bootstrap_servers=self._hosts,
@@ -60,6 +70,9 @@ class KafkaMessageSensor(Sensor):
         """
         map(self._consumer._client.ensure_topic_exists, self._topics)
         self._consumer.set_topic_partitions(*self._topics)
+
+        map(self._b64consumer._client.ensure_topic_exists, self._b64topics)
+        self._b64consumer.set_topic_partitions(*self._b64topics)
 
     def run(self):
         """
@@ -86,11 +99,31 @@ class KafkaMessageSensor(Sensor):
             self._consumer.task_done(message)
             self._consumer.commit()
 
+        for message in self._b64consumer:
+            message.value['payload']['message'] = message.value['payload']['message'].decode('base64')
+            self._logger.debug(
+                "[KafkaMessageSensor]: Received %s:%d:%d: key=%s message=%s" %
+                (message.topic, message.partition,
+                 message.offset, message.key, message.value)
+            )
+            payload = {
+                'topic': message.topic,
+                'partition': message.partition,
+                'offset': message.offset,
+                'key': message.key,
+                'message': message.value,
+            }
+            self._sensor_service.dispatch(trigger=self.TRIGGER, payload=payload)
+            # Mark this message as fully consumed
+            self._b64consumer.task_done(message)
+            self._b64consumer.commit()
+
     def cleanup(self):
         """
         Close connection, just to be sure.
         """
         self._consumer._client.close()
+        self._b64consumer._client.close()
 
     def add_trigger(self, trigger):
         pass
